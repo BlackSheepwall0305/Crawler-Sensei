@@ -1,0 +1,22 @@
+import pymongo
+
+client = pymongo.MongoClient('mongodb://localhost:27017')
+
+db = client['test']
+
+collection = db['linshi2']
+
+results = collection.find({'sales':{'$gt':800}})
+
+print(type(results))
+
+for result in results:
+    print(result)
+
+
+
+'''
+运行结果：
+<class 'pymongo.cursor.Cursor'>
+
+'''
