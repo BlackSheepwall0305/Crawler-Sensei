@@ -1,0 +1,100 @@
+'''
+I. Germey的CSS选择器的不同用法 div.form
+II. 显示等待
+III. 用selenium抓取程序的思路：
+（1）切换页面，确保页面完成加载
+（2）browser.page_source 获取html字符串，然后解析页面获取信息，返回一条待存储的信息
+（3）存入数据库（MongoDB）
+'''
+import pymongo
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from urllib.parse import quote
+from pyquery import PyQuery as pq
+
+chrome_options = webdriver.ChromeOptions()
+chrome_options.add_argument('--headless')
+browser = webdriver.Chrome(chrome_options=chrome_options)  #初始化一个无头浏览器对象
+
+wait = WebDriverWait(browser, 10)  #初始化一个WebDriverWait对象
+
+client = pymongo.MongoClient('mongodb://localhost:27017')  #初始化一个MongoClient对象
+
+db = client['test']  #指定数据库
+
+collection = db['linshi2']  #指定集合
+
+
+def change_page(page):  #切换页面，并且确保页面完成加载
+    print('当前正在获取第',page,'页')
+
+    keyword = '林氏木业'
+    baseurl = 'https://s.taobao.com/search?q='
+    url = baseurl + quote(keyword)
+
+    browser.get(url)
+
+    if page > 1:
+        inputElem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '#mainsrp-pager div.form > input')))
+        submitElem = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '#mainsrp-pager div.form > span.btn.J_Submit')))
+        inputElem.clear()
+        inputElem.send_keys(page)
+        submitElem.click()
+    wait.until(EC.text_to_be_present_in_element((By.CSS_SELECTOR, '#mainsrp-pager li.item.active > span'), str(page)))  #确保当前高亮的页码就是我们要获取页面的页码
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, '.m-itemlist .items .item'))) #确保页面加载完成
+
+    get_products()
+
+
+def get_products(): #解析获取页面中我们需要的信息
+
+
+    html = browser.page_source
+
+    doc = pq(html)
+
+    items = doc('.m-itemlist .items .item').items()
+
+    for item in items:
+        title = item.find('.title').text()
+        image = item.find('.pic .img').attr('data-src')
+
+        # item.find('.price span').remove()
+        price = float(str(item('.price').text()[2:]))
+
+        sales = float(str(item.find('.deal-cnt').text()[:-3]))
+        shopName = item.find('.shop').text()
+        shopCity = item.find('.location').text()
+
+        product = {
+            'title': title,
+            'image': image,
+            'price': price,
+            'sales': sales,
+            'shopName': shopName,
+            'shopCity': shopCity
+        }
+
+        print(product)
+
+        save_to_mongo(product)
+
+
+def save_to_mongo(result):
+
+    if collection.insert_one(result):
+        print('存储到MongoDB成功')
+    else:
+        print('存储到MongoDB失败')
+
+def main():
+    for i in range(1,4):
+        change_page(i)
+    browser.quit()
+
+
+if __name__ == '__main__':
+    main()
+
